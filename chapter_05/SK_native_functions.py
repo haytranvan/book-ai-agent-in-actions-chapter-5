@@ -1,8 +1,13 @@
 import asyncio
+import os
+from dotenv import load_dotenv
 
 import semantic_kernel as sk
 import semantic_kernel.connectors.ai.open_ai as sk_oai
 from semantic_kernel.functions import kernel_function
+
+# Load environment variables
+load_dotenv()
 
 selected_service = "OpenAI"
 kernel = sk.Kernel()
@@ -11,7 +16,8 @@ service_id = None
 if selected_service == "OpenAI":
     from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
 
-    api_key, org_id = sk.openai_settings_from_dot_env()
+    api_key = os.getenv("OPENAI_API_KEY")
+    org_id = os.getenv("OPENAI_ORG_ID")  # Optional
     service_id = "oai_chat_gpt"
     model_id = "gpt-4-1106-preview"
     kernel.add_service(
@@ -23,12 +29,14 @@ if selected_service == "OpenAI":
         ),
     )
 elif selected_service == "AzureOpenAI":
-    from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
+    from semantic_kernel.connectors.ai.azure_open_ai import AzureOpenAIChatCompletion
 
-    deployment, api_key, endpoint = sk.azure_openai_settings_from_dot_env()
+    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+    api_key = os.getenv("AZURE_OPENAI_API_KEY")
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     service_id = "aoai_chat_completion"
     kernel.add_service(
-        AzureChatCompletion(
+        AzureOpenAIChatCompletion(
             service_id=service_id,
             deployment_name=deployment,
             endpoint=endpoint,
@@ -81,14 +89,20 @@ class MySeenMoviesDatabase:
 
 plugins_directory = "plugins"
 
-recommender = kernel.import_plugin_from_prompt_directory(
-    plugins_directory,
-    "Recommender",
+# Load the plugin using KernelPlugin.from_directory
+from semantic_kernel.functions.kernel_plugin import KernelPlugin
+
+recommender = KernelPlugin.from_directory(
+    plugin_name="Recommender",
+    parent_directory="plugins"
 )
+
+# Add the plugin to the kernel
+kernel.add_plugin(recommender)
 
 recommend = recommender["Recommend_Movies"]
 
-seen_movies_plugin = kernel.import_plugin_from_object(
+seen_movies_plugin = kernel.add_plugin(
     MySeenMoviesDatabase(), "SeenMoviesPlugin"
 )
 
@@ -107,7 +121,7 @@ print(seen_movie_list)
 async def run():
     result = await kernel.invoke(
         recommend,
-        sk.KernelArguments(settings=execution_settings, input=seen_movie_list),
+        sk.functions.KernelArguments(settings=execution_settings, input=seen_movie_list),
     )
     print(result)
 

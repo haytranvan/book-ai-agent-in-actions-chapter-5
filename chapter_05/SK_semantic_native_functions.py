@@ -1,8 +1,13 @@
 import asyncio
+import os
+from dotenv import load_dotenv
 
 import semantic_kernel as sk
 import semantic_kernel.connectors.ai.open_ai as sk_oai
 from semantic_kernel.functions import kernel_function
+
+# Load environment variables
+load_dotenv()
 
 selected_service = "OpenAI"
 kernel = sk.Kernel()
@@ -11,7 +16,8 @@ service_id = None
 if selected_service == "OpenAI":
     from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
 
-    api_key, org_id = sk.openai_settings_from_dot_env()
+    api_key = os.getenv("OPENAI_API_KEY")
+    org_id = os.getenv("OPENAI_ORG_ID")  # Optional
     service_id = "oai_chat_gpt"
     model_id = "gpt-4-1106-preview"
     kernel.add_service(
@@ -25,7 +31,9 @@ if selected_service == "OpenAI":
 elif selected_service == "AzureOpenAI":
     from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
 
-    deployment, api_key, endpoint = sk.azure_openai_settings_from_dot_env()
+    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+    api_key = os.getenv("AZURE_OPENAI_API_KEY")
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     service_id = "aoai_chat_completion"
     kernel.add_service(
         AzureChatCompletion(
@@ -78,7 +86,7 @@ class MySeenMoviesDatabase:
             return None
 
 
-seen_movies_plugin = kernel.import_plugin_from_object(
+seen_movies_plugin = kernel.add_plugin(
     MySeenMoviesDatabase(), "SeenMoviesPlugin"
 )
 
@@ -91,24 +99,26 @@ You want to recommend a movie that the user has not watched before.
 Movie List: {{SeenMoviesPlugin.LoadSeenMovies}}.
 """
 
-prompt_template_config = sk.PromptTemplateConfig(
+prompt_template_config = sk.prompt_template.PromptTemplateConfig(
     template=sk_prompt,
     name="tldr",
     template_format="semantic-kernel",
     execution_settings=execution_settings,
 )
 
-recommend_function = kernel.create_function_from_prompt(
-    prompt_template_config=prompt_template_config,
+from semantic_kernel.functions import KernelFunctionFromPrompt
+
+recommend_function = KernelFunctionFromPrompt(
+    prompt=sk_prompt,
     function_name="Recommend_Movies",
-    plugin_name="Recommendation",
+    description="Recommend a movie based on user's viewing history"
 )
 
 
 async def run_recommendation():
     recommendation = await kernel.invoke(
         recommend_function,
-        sk.KernelArguments(),
+        sk.functions.KernelArguments(),
     )
     print(recommendation)
 

@@ -1,6 +1,11 @@
 import asyncio
+import os
+from dotenv import load_dotenv
 
 import semantic_kernel as sk
+
+# Load environment variables
+load_dotenv()
 
 selected_service = "OpenAI"
 kernel = sk.Kernel()
@@ -9,7 +14,8 @@ service_id = None
 if selected_service == "OpenAI":
     from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
 
-    api_key, org_id = sk.openai_settings_from_dot_env()
+    api_key = os.getenv("OPENAI_API_KEY")
+    org_id = os.getenv("OPENAI_ORG_ID")  # Optional
     service_id = "oai_chat_gpt"
     kernel.add_service(
         OpenAIChatCompletion(
@@ -20,12 +26,14 @@ if selected_service == "OpenAI":
         ),
     )
 elif selected_service == "AzureOpenAI":
-    from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
+    from semantic_kernel.connectors.ai.azure_open_ai import AzureOpenAIChatCompletion
 
-    deployment, api_key, endpoint = sk.azure_openai_settings_from_dot_env()
+    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+    api_key = os.getenv("AZURE_OPENAI_API_KEY")
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     service_id = "aoai_chat_completion"
     kernel.add_service(
-        AzureChatCompletion(
+        AzureOpenAIChatCompletion(
             service_id=service_id,
             deployment_name=deployment,
             endpoint=endpoint,
@@ -36,7 +44,7 @@ elif selected_service == "AzureOpenAI":
 
 # This function is currently broken
 async def run_prompt():
-    result = await kernel.invoke_prompt(prompt="recommend a movie about time travel")
+    result = await kernel.invoke_prompt(prompt="recommend a movie about comedy")
     print(result)
 
 

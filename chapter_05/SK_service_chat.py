@@ -1,14 +1,20 @@
 import asyncio
+import os
+from dotenv import load_dotenv
 
 import semantic_kernel as sk
 import semantic_kernel.connectors.ai.open_ai as sk_oai
 
 # from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptTemplate
-from semantic_kernel.connectors.ai.open_ai.utils import (
-    chat_completion_with_tool_call,
-    get_tool_call_object,
-)
+# These utilities are deprecated in SK 1.x
+# from semantic_kernel.connectors.ai.open_ai.utils import (
+#     chat_completion_with_tool_call,
+#     get_tool_call_object,
+# )
 from semantic_kernel.contents.chat_history import ChatHistory
+
+# Load environment variables
+load_dotenv()
 
 from plugins.Movies.tmdb import TMDbService
 
@@ -19,7 +25,8 @@ service_id = None
 if selected_service == "OpenAI":
     from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
 
-    api_key, org_id = sk.openai_settings_from_dot_env()
+    api_key = os.getenv("OPENAI_API_KEY")
+    org_id = os.getenv("OPENAI_ORG_ID")  # Optional
     service_id = "oai_chat_gpt"
     model_id = "gpt-4-1106-preview"
     kernel.add_service(
@@ -33,7 +40,9 @@ if selected_service == "OpenAI":
 elif selected_service == "AzureOpenAI":
     from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
 
-    deployment, api_key, endpoint = sk.azure_openai_settings_from_dot_env()
+    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+    api_key = os.getenv("AZURE_OPENAI_API_KEY")
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     service_id = "aoai_chat_completion"
     kernel.add_service(
         AzureChatCompletion(
@@ -44,7 +53,7 @@ elif selected_service == "AzureOpenAI":
         ),
     )
 
-tmdb_service = kernel.import_plugin_from_object(TMDbService(), "TMDBService")
+tmdb_service = kernel.add_plugin(TMDbService(), "TMDBService")
 
 # set up the execution settings
 if selected_service == "OpenAI":
@@ -54,8 +63,6 @@ if selected_service == "OpenAI":
         max_tokens=2000,
         temperature=0.7,
         top_p=0.8,
-        tool_choice="auto",
-        tools=get_tool_call_object(kernel, {"exclude_plugin": ["ChatBot"]}),
     )
 elif selected_service == "AzureOpenAI":
     execution_settings = sk_oai.OpenAIChatPromptExecutionSettings(
@@ -64,8 +71,6 @@ elif selected_service == "AzureOpenAI":
         max_tokens=2000,
         temperature=0.7,
         top_p=0.8,
-        tool_choice="auto",
-        tools=get_tool_call_object(kernel, {"exclude_plugin": ["ChatBot"]}),
     )
 
 # OpenAIChatPromptTemplate
@@ -87,15 +92,18 @@ elif selected_service == "AzureOpenAI":
 #     execution_settings={"default": execution_settings},
 # )
 
-prompt_config = sk.PromptTemplateConfig.from_completion_parameters(
-    max_tokens=2000,
-    temperature=0.7,
-    top_p=0.8,
-    function_call="auto",
-    chat_system_prompt="You are a chat bot that recommends movies and TV Shows.",
+prompt_config = sk.prompt_template.PromptTemplateConfig(
+    template="{{$user_input}}",
+    name="Chat",
+    template_format="semantic-kernel",
+    execution_settings={"default": execution_settings},
 )
-prompt_template = OpenAIChatPromptTemplate(
-    "{{$user_input}}", kernel.prompt_template_engine, prompt_config
+from semantic_kernel.functions import KernelFunctionFromPrompt
+
+chat_function = KernelFunctionFromPrompt(
+    prompt="{{$user_input}}",
+    function_name="Chat",
+    description="Chat with the movie recommendation bot"
 )
 
 
@@ -107,11 +115,7 @@ history.add_assistant_message(
     "I am Rudy, the recommender chat bot. I'm trying to figure out what people need."
 )
 
-chat_function = kernel.create_function_from_prompt(
-    prompt_template_config=prompt_template,
-    plugin_name="ChatBot",
-    function_name="Chat",
-)
+# chat_function is already defined above
 
 
 async def chat() -> bool:
@@ -127,17 +131,11 @@ async def chat() -> bool:
     if user_input == "exit":
         print("\n\nExiting chat...")
         return False
-    arguments = sk.KernelArguments(
+    arguments = sk.functions.KernelArguments(
         user_input=user_input,
         history=("\n").join([f"{msg.role}: {msg.content}" for msg in history]),
     )
-    result = await chat_completion_with_tool_call(
-        kernel=kernel,
-        arguments=arguments,
-        chat_plugin_name="ChatBot",
-        chat_function_name="Chat",
-        chat_history=history,
-    )
+    result = await kernel.invoke(chat_function, arguments)
     print(f"GPT Agent:> {result}")
     return True
 

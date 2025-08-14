@@ -22,7 +22,7 @@ def print_function_call():
 class SimpleFavoriteService:
     def __init__(self):
         self.csv_file = "favorite_movies_simple.csv"
-        self.fieldnames = ['title', 'genre', 'added_date']
+        self.fieldnames = ['id', 'title', 'genre', 'added_date']
         self._initialize_csv()
     
     def _initialize_csv(self):
@@ -52,8 +52,26 @@ class SimpleFavoriteService:
             for favorite in favorites:
                 writer.writerow(favorite)
     
+    def _get_next_id(self):
+        """Get the next available ID"""
+        favorites = self._load_favorites()
+        if not favorites:
+            return 1
+        
+        # Find the highest existing ID and add 1
+        max_id = 0
+        for fav in favorites:
+            try:
+                current_id = int(fav.get('id', 0))
+                if current_id > max_id:
+                    max_id = current_id
+            except ValueError:
+                continue
+        
+        return max_id + 1
+    
     @kernel_function(
-        description="Add a new movie to favorites list",
+        description="Add a new movie to favorites list including genre",
         name="add_favorite_movie",
     )
     def add_favorite_movie(self, movie_title: str, genre: str = "") -> str:
@@ -78,6 +96,7 @@ class SimpleFavoriteService:
         
         # Create new favorite entry
         new_favorite = {
+            'id': str(self._get_next_id()),
             'title': movie_title,
             'genre': genre,
             'added_date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -108,9 +127,10 @@ class SimpleFavoriteService:
         
         result = f"FAVORITE MOVIES LIST ({len(favorites)} movies):\n\n"
         
-        for i, fav in enumerate(favorites, 1):
+        for fav in favorites:
             genre_info = f" | Genre: {fav['genre']}" if fav['genre'] else ""
-            result += f"{i}. {fav['title']}{genre_info}\n"
+            movie_id = fav.get('id', 'N/A')
+            result += f"ID: {movie_id} - {fav['title']}{genre_info}\n"
             result += f"   Added: {fav['added_date']}\n\n"
         
         return result
@@ -144,8 +164,62 @@ class SimpleFavoriteService:
         
         result = f"FAVORITE {genre.upper()} MOVIES ({len(genre_favorites)} movies):\n\n"
         
-        for i, fav in enumerate(genre_favorites, 1):
-            result += f"{i}. {fav['title']}\n"
+        for fav in genre_favorites:
+            movie_id = fav.get('id', 'N/A')
+            result += f"ID: {movie_id} - {fav['title']}\n"
             result += f"   Added: {fav['added_date']}\n\n"
         
         return result
+    
+    @kernel_function(
+        description="Delete a movie from favorites by ID or title",
+        name="delete_favorite_movie",
+    )
+    def delete_favorite_movie(self, identifier: str) -> str:
+        """
+        Delete a movie from favorites list by ID or movie title.
+        
+        Parameters:
+        - identifier: Movie ID (number) or movie title (string)
+        
+        Returns:
+        - Confirmation message
+        """
+        print_function_call()
+        
+        favorites = self._load_favorites()
+        
+        if not favorites:
+            return "No movies in favorites list to delete."
+        
+        # Try to find the movie by ID first, then by title
+        movie_to_delete = None
+        delete_index = -1
+        
+        # Check if identifier is a number (ID)
+        try:
+            movie_id = int(identifier)
+            for i, fav in enumerate(favorites):
+                if int(fav.get('id', 0)) == movie_id:
+                    movie_to_delete = fav
+                    delete_index = i
+                    break
+        except ValueError:
+            # Not a number, search by title
+            for i, fav in enumerate(favorites):
+                if fav['title'].lower() == identifier.lower():
+                    movie_to_delete = fav
+                    delete_index = i
+                    break
+        
+        if movie_to_delete is None:
+            return f"Movie with identifier '{identifier}' not found in favorites."
+        
+        # Remove the movie
+        favorites.pop(delete_index)
+        self._save_favorites(favorites)
+        
+        movie_title = movie_to_delete['title']
+        movie_id = movie_to_delete.get('id', 'N/A')
+        
+        return f"Deleted movie '{movie_title}' (ID: {movie_id}) from favorites! Remaining: {len(favorites)} movies"
